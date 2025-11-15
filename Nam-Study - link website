@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Namibia StudyLink</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, addDoc, updateDoc, deleteDoc, getDocs, serverTimestamp, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Set Debug logging for console visibility
+        setLogLevel('Debug');
+
+        // Global Firebase Configuration and Initialization
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // Expose Firebase modules globally (for use in the main script block)
+        window.firebase = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, addDoc, 
+            updateDoc, deleteDoc, getDocs, serverTimestamp, orderBy, appId, initialAuthToken
+        };
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        /* Custom dynamic style placeholder */
+        :root {
+            --primary-color: 99 102 241; /* Default: Indigo-600 */
+        }
+        .text-primary-600 { color: rgb(var(--primary-color) / 1); }
+        .bg-primary-600 { background-color: rgb(var(--primary-color) / 1); }
+        .hover\:bg-primary-700:hover { background-color: rgb(var(--primary-color) / 0.8); }
+        .focus\:ring-primary-500:focus { --tw-ring-color: rgb(var(--primary-color) / 0.5); }
+        .border-primary-600 { border-color: rgb(var(--primary-color) / 1); }
+        .interactive-element { min-height: 48px; }
+
+        /* Custom scrollbar for chat */
+        #chat-messages::-webkit-scrollbar { width: 8px; }
+        #chat-messages::-webkit-scrollbar-thumb { background-color: rgb(var(--primary-color) / 0.5); border-radius: 4px; }
+        
+        /* Tab Styles */
+        .tab-button.active {
+            border-bottom-color: rgb(var(--primary-color) / 1);
+            color: rgb(var(--primary-color) / 1);
+        }
+        .tab-button:not(.active) {
+            border-bottom-color: transparent;
+            color: rgb(107 114 128); /* gray-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased">
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="p-4 bg-white rounded-xl shadow-2xl flex items-center">
+            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span id="loading-message">Loading App & Securing Connection...</span>
+        </div>
+    </div>
+
+    <!-- Main Application Content (Initially Hidden) -->
+    <div id="app-container" class="min-h-screen hidden">
+        
+        <!-- Header/Navbar -->
+        <header class="bg-white shadow-lg sticky top-0 z-10">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                <div id="site-title-display" class="text-2xl font-extrabold text-primary-600">
+                    Namibia StudyLink
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="user-status" class="text-sm font-medium text-gray-500"></span>
+                    
+                    <button id="owner-unlock-toggle" class="bg-primary-600 text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-primary-700 transition duration-300 interactive-element hidden">
+                        Owner Unlock
+                    </button>
+
+                    <button id="admin-panel-toggle" class="bg-yellow-500 text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-yellow-600 transition duration-300 interactive-element hidden">
+                        Admin Panel
+                    </button>
+                    
+                    <button id="logout-button" class="bg-red-500 text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-red-600 transition duration-300 interactive-element">
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Notes/Resources Exchange (2/3 width on desktop) -->
+            <section id="main-content-section" class="lg:col-span-2 bg-white p-6 md:p-8 rounded-xl shadow-lg border border-gray-100">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6 border-b pb-2">Namibia Study Exchange</h2>
+
+                <!-- Tab Buttons -->
+                <div class="flex border-b border-gray-200 mb-6">
+                    <button data-tab="pdf" class="tab-button text-lg font-semibold py-2 px-4 border-b-2 border-primary-600 text-primary-600 transition duration-150 active">
+                        PDF Notes Exchange
+                    </button>
+                    <button data-tab="resources" class="tab-button text-lg font-semibold py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-primary-600 transition duration-150">
+                        High School Resources (G1-G12)
+                    </button>
+                </div>
+
+                <!-- Tab Content: PDF Exchange -->
+                <div id="tab-pdf" class="tab-content">
+                    
+                    <!-- Notes Submission Form -->
+                    <div class="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h3 class="text-xl font-semibold mb-3 text-primary-600">Upload PDF Link (University/College Focus)</h3>
+                        <form id="note-form" class="space-y-4">
+                            <input type="text" id="note-title" placeholder="Title (e.g., Grade 12 Math: Calculus)" required
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element">
+                            
+                            <input type="url" id="note-link" placeholder="Secure link to the PDF document (e.g., Google Drive, Dropbox)" required
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element">
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <select id="note-institution" required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element bg-white">
+                                    <option value="" disabled selected>Select Institution Type</option>
+                                    <option value="School">Secondary School</option>
+                                    <option value="University">University</option>
+                                    <option value="College">Vocational/College</option>
+                                </select>
+                                <select id="note-grade" required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element bg-white">
+                                    <option value="" disabled selected>Select Grade/Level</option>
+                                    <option value="G8">Grade 8</option>
+                                    <option value="G10">Grade 10</option>
+                                    <option value="G12">Grade 12</option>
+                                    <option value="UG1">Undergrad Year 1</option>
+                                    <option value="UG2">Undergrad Year 2</option>
+                                    <option value="PG">Postgraduate</option>
+                                </select>
+                            </div>
+                            
+                            <button type="submit" class="w-full bg-primary-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-primary-700 transition duration-300 interactive-element">
+                                Share PDF Link
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Notes Filter -->
+                    <div class="flex flex-col sm:flex-row gap-4 mb-6">
+                        <select id="filter-institution" class="w-full sm:w-1/2 px-4 py-3 border border-gray-300 rounded-lg interactive-element bg-white">
+                            <option value="all">Filter by Institution Type (All)</option>
+                            <option value="School">Secondary School</option>
+                            <option value="University">University</option>
+                            <option value="College">Vocational/College</option>
+                        </select>
+                        <select id="filter-grade" class="w-full sm:w-1/2 px-4 py-3 border border-gray-300 rounded-lg interactive-element bg-white">
+                            <option value="all">Filter by Grade/Level (All)</option>
+                            <option value="G8">Grade 8</option>
+                            <option value="G10">Grade 10</option>
+                            <option value="G12">Grade 12</option>
+                            <option value="UG1">Undergrad Year 1</option>
+                            <option value="UG2">Undergrad Year 2</option>
+                            <option value="PG">Postgraduate</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Notes List -->
+                    <div id="notes-list" class="space-y-6">
+                        <p class="text-center text-gray-500">Loading documents...</p>
+                    </div>
+                </div>
+
+                <!-- Tab Content: High School Resources -->
+                <div id="tab-resources" class="tab-content hidden">
+                     <!-- Resources Submission Form (G1-G12) -->
+                    <div class="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h3 class="text-xl font-semibold mb-3 text-primary-600">Contribute High School Resource Link (Grades 1-12)</h3>
+                        <form id="resource-form" class="space-y-4">
+                            <input type="text" id="resource-title" placeholder="Resource Title (e.g., Grade 5 Maths Worksheet Link)" required
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element">
+                            
+                            <input type="url" id="resource-link" placeholder="Secure link to the resource (e.g., YouTube, website, online file)" required
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element">
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <select id="resource-grade-select" required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element bg-white">
+                                    <option value="" disabled selected>Select Grade (1-12)</option>
+                                    <!-- Options populated by JS -->
+                                </select>
+                                <select id="resource-subject-select" required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element bg-white">
+                                    <option value="" disabled selected>Select Subject</option>
+                                    <option value="Math">Math</option>
+                                    <option value="Science">Science</option>
+                                    <option value="History">History</option>
+                                    <option value="English">English</option>
+                                    <option value="IT">IT/Comp Sci</option>
+                                    <option value="General">General</option>
+                                </select>
+                            </div>
+                            
+                            <button type="submit" id="resource-submit-btn" class="w-full bg-primary-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-primary-700 transition duration-300 interactive-element">
+                                Share Resource Link
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <!-- Resources List -->
+                    <div id="resources-list" class="space-y-6">
+                        <p class="text-center text-gray-500">Loading high school resources...</p>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Community Chat (1/3 width on desktop) -->
+            <section id="chat-section" class="lg:col-span-1 bg-white p-6 md:p-8 rounded-xl shadow-lg border border-gray-100">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6 border-b pb-2">Community Chat</h2>
+
+                <!-- Chat Messages -->
+                <div id="chat-messages" class="h-96 overflow-y-auto space-y-4 pr-2 mb-6 border-b pb-4">
+                    <!-- Messages will be injected here by JS -->
+                </div>
+
+                <!-- Chat Input Form -->
+                <form id="chat-form" class="flex space-x-2">
+                    <input type="text" id="chat-input" placeholder="Type your message..." required
+                        class="flex-grow px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element">
+                    <button type="submit" class="bg-primary-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-primary-700 transition duration-300 interactive-element">
+                        Send
+                    </button>
+                </form>
+            </section>
+
+        </main>
+        
+        <!-- Admin Panel (Modal/Sidebar) -->
+        <div id="admin-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-40 hidden justify-center items-center p-4">
+            <div class="bg-white p-8 rounded-2xl shadow-3xl max-w-2xl w-full">
+                <div class="flex justify-between items-center mb-6 border-b pb-3">
+                    <h3 class="text-2xl font-bold text-gray-900">Owner Admin Dashboard</h3>
+                    <button id="close-admin-modal" class="text-gray-500 hover:text-gray-800 transition interactive-element">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+
+                <div class="space-y-6">
+                    <!-- Site Customization -->
+                    <div>
+                        <h4 class="text-xl font-semibold mb-3 text-primary-600">Site Customization</h4>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="admin-title" class="block text-sm font-medium text-gray-700 mb-2">Website Title</label>
+                                <input type="text" id="admin-title" class="w-full px-3 py-2 border border-gray-300 rounded-lg interactive-element">
+                            </div>
+                            <div>
+                                <label for="admin-color" class="block text-sm font-medium text-gray-700 mb-2">Primary Theme Color (Tailwind Color Name)</label>
+                                <input type="text" id="admin-color" placeholder="e.g., blue, green, teal" value="indigo" class="w-full px-3 py-2 border border-gray-300 rounded-lg interactive-element">
+                            </div>
+                            <button id="save-site-config" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition interactive-element">
+                                Save Settings
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- User Management -->
+                    <div>
+                        <h4 class="text-xl font-semibold mb-3 text-primary-600">User Management (Banning)</h4>
+                        <p class="text-sm text-gray-600 mb-4">Users banned here will lose all access. Current Banned User IDs are shown below.</p>
+                        <div id="banned-users-list" class="space-y-2 max-h-40 overflow-y-auto p-2 bg-gray-50 rounded-lg">
+                            <p class="text-gray-500">No banned users yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Owner Unlock Modal -->
+        <div id="owner-unlock-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden justify-center items-center p-4">
+            <div class="bg-white p-8 rounded-2xl shadow-3xl max-w-md w-full text-center">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-2xl font-bold text-primary-600">Owner Login</h3>
+                    <button id="close-owner-unlock-modal" class="text-gray-500 hover:text-gray-800 transition interactive-element">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                
+                <p class="text-gray-600 mb-6 text-left">Please enter the Owner's Cellphone Number to unlock administrative features for this session.</p>
+                <form id="owner-unlock-form" class="space-y-4">
+                    <div>
+                        <label for="owner-phone-input" class="block text-sm font-medium text-left text-gray-700 mb-2">Cellphone Number</label>
+                        <input type="tel" id="owner-phone-input" placeholder="e.g., 0814936721" required
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element">
+                    </div>
+                    <button type="submit" class="w-full bg-primary-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-primary-700 transition duration-300 interactive-element">
+                        Unlock Admin Access
+                    </button>
+                    <p id="owner-unlock-message" class="text-sm text-red-500 hidden"></p>
+                </form>
+            </div>
+        </div>
+
+
+        <!-- Enrollment/Verification Modal (Hidden after sign-up) -->
+        <div id="enrollment-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden justify-center items-center p-4">
+            <div class="bg-white p-8 rounded-2xl shadow-3xl max-w-md w-full text-center">
+                <h3 class="text-2xl font-bold text-primary-600 mb-4">Namibian Student Registration</h3>
+                <p class="text-gray-600 mb-6">Enter your details, including a valid Namibian phone number, to join the exchange.</p>
+                <form id="enrollment-form" class="space-y-4">
+                     <!-- PHONE NUMBER FIELD -->
+                    <div>
+                        <label for="enrollment-phone-input" class="block text-sm font-medium text-left text-gray-700 mb-2">Namibian Cellphone Number (e.g., 081xxxxxxx)</label>
+                        <input type="tel" id="enrollment-phone-input" placeholder="e.g., 0814936721" required
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element">
+                    </div>
+
+                    <div>
+                        <label for="institution-select" class="block text-sm font-medium text-left text-gray-700 mb-2">Educational Institution</label>
+                        <select id="institution-select" required
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element bg-white">
+                            <option value="" disabled selected>Select Your Institution</option>
+                            <option value="UNAM">University of Namibia (UNAM)</option>
+                            <option value="NUST">Namibia University of Science and Technology (NUST)</option>
+                            <option value="HighSchool">Any Namibian High School</option>
+                            <option value="Vocational">Vocational Training Center</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="course-input" class="block text-sm font-medium text-left text-gray-700 mb-2">Course/Grade Level</label>
+                        <input type="text" id="course-input" placeholder="e.g., Grade 12, First Year B.Eng" required
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 interactive-element">
+                    </div>
+                    
+                    <p id="enrollment-message" class="text-sm text-red-500 hidden text-left"></p>
+
+                    <button type="submit" class="w-full bg-primary-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-primary-700 transition duration-300 interactive-element">
+                        Join Exchange
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script type="module">
+        const { 
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            getFirestore, doc, setDoc, onSnapshot, collection, query, addDoc, updateDoc, deleteDoc, getDocs,
+            serverTimestamp, orderBy, appId, initialAuthToken
+        } = window.firebase;
+
+        // --- GLOBAL VARIABLES & CONSTANTS ---
+        const OWNER_PHONE_CONCEPT = '0814936721'; // Simulated Owner Cellphone Number
+        const NAMIBIAN_PREFIXES = ['081', '085', '083']; // Simulated Namibian Mobile Prefixes
+        const CONFIG_DOC_PATH = `/artifacts/${appId}/public/data/config/site_settings`;
+        const CHAT_COLLECTION_PATH = `/artifacts/${appId}/public/data/community_chat`;
+        const NOTES_COLLECTION_PATH = `/artifacts/${appId}/public/data/study_notes`;
+        const RESOURCES_COLLECTION_PATH = `/artifacts/${appId}/public/data/high_school_resources`; // NEW PATH
+        const BANNED_DOC_PATH = `/artifacts/${appId}/public/data/config/banned_users`;
+        
+        let app, db, auth, userId = null;
+        let isOwner = false;
+        let isEnrolled = false;
+        let bannedUsers = [];
+        
+        // --- DOM Elements ---
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const appContainer = document.getElementById('app-container');
+        const userStatusEl = document.getElementById('user-status');
+        const adminPanelToggle = document.getElementById('admin-panel-toggle');
+        const ownerUnlockToggle = document.getElementById('owner-unlock-toggle');
+        const adminModal = document.getElementById('admin-modal');
+        const ownerUnlockModal = document.getElementById('owner-unlock-modal');
+        const enrollmentModal = document.getElementById('enrollment-modal');
+        const enrollmentForm = document.getElementById('enrollment-form');
+        
+        const notesList = document.getElementById('notes-list');
+        const notesForm = document.getElementById('note-form');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatForm = document.getElementById('chat-form');
+        const filterInstitution = document.getElementById('filter-institution');
+        const filterGrade = document.getElementById('filter-grade');
+        
+        const resourcesList = document.getElementById('resources-list'); // NEW
+        const resourceForm = document.getElementById('resource-form'); // NEW
+        const resourceGradeSelect = document.getElementById('resource-grade-select'); // NEW
+        const tabButtons = document.querySelectorAll('.tab-button'); // NEW
+
+        // --- FIREBASE INITIALIZATION & AUTHENTICATION ---
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            // Sign in using the custom token or anonymously
+            if (initialAuthToken) {
+                document.getElementById('loading-message').textContent = "Authenticating Owner...";
+                await signInWithCustomToken(auth, initialAuthToken);
+            } else {
+                document.getElementById('loading-message').textContent = "Signing in anonymously...";
+                await signInAnonymously(auth);
+            }
+        } catch (error) {
+            console.error("Firebase Initialization Error:", error);
+            document.getElementById('loading-message').textContent = "Error: Failed to initialize Firebase.";
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
+                checkUserRoleAndEnrollment();
+            } else {
+                console.log("No user signed in. Attempting anonymous sign-in...");
+                signInAnonymously(auth).catch(e => console.error("Anonymous Sign-in Failed:", e));
+            }
+        });
+        
+        // --- UTILITY FUNCTIONS ---
+        // Simple function to get Tailwind RGB values for dynamic CSS variable
+        function getColorRGB(colorName) {
+            const colors = {
+                'indigo': '99 102 241', 'blue': '59 130 246', 'green': '34 197 94', 
+                'red': '239 68 68', 'yellow': '250 204 21', 'gray': '107 114 128',
+                'teal': '20 184 166', 'fuchsia': '217 70 239' 
+            };
+            return colors[colorName] || colors['indigo'];
+        }
+        
+        // Populate grade select for G1-G12 resources
+        function populateResourceGrades() {
+            for (let i = 1; i <= 12; i++) {
+                const option = document.createElement('option');
+                option.value = i.toString();
+                option.textContent = `Grade ${i}`;
+                resourceGradeSelect.appendChild(option);
+            }
+        }
+        
+        // --- CORE APPLICATION LOGIC ---
+
+        async function checkUserRoleAndEnrollment() {
+            if (!userId) return;
+
+            const userDocPath = `/artifacts/${appId}/users/${userId}/config/profile`;
+            const userRef = doc(db, userDocPath);
+
+            // 1. Check User Profile (for role and enrollment status)
+            const userSnap = await getDoc(userRef);
+            let userProfile = {};
+
+            if (userSnap.exists()) {
+                userProfile = userSnap.data();
+                isOwner = userProfile.role === 'owner';
+                isEnrolled = userProfile.isEnrolled === true;
+            } else {
+                // First time user: Create profile.
+                const role = (initialAuthToken && userId === auth.currentUser.uid) ? 'owner' : 'student';
+                isOwner = (role === 'owner');
+                isEnrolled = false; 
+                
+                userProfile = { 
+                    userId: userId, 
+                    role: role, 
+                    alias: `Student #${Math.floor(Math.random() * 9000) + 1000}`,
+                    isEnrolled: isEnrolled,
+                    institution: null,
+                    course: null,
+                    phone: null,
+                };
+
+                await setDoc(userRef, userProfile);
+            }
+
+            // 2. Load Banned List
+            await loadBannedUsers();
+
+            // 3. Check Banned Status
+            if (bannedUsers.includes(userId)) {
+                loadingOverlay.classList.remove('hidden');
+                document.getElementById('loading-message').textContent = "Access Denied: You have been banned from the platform.";
+                document.getElementById('logout-button').classList.add('hidden'); 
+                return;
+            }
+
+            // 4. Update UI based on Role/Enrollment
+            updateUIVisibility(userProfile);
+            
+            // 5. Start Real-time Listeners (Only if enrolled)
+            if (isEnrolled) {
+                startPublicListeners();
+            }
+
+            // 6. Final UI Setup
+            populateResourceGrades();
+            loadingOverlay.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+        }
+
+        function updateUIVisibility(userProfile) {
+            
+            // Determine the display status for the header
+            let statusText = `User ID: ${userId.substring(0, 8)}...`;
+            if (isOwner) {
+                statusText = `Owner: ${OWNER_PHONE_CONCEPT}`;
+            } else if (isEnrolled) {
+                const phonePrefix = userProfile.phone ? userProfile.phone.substring(0, 4) : 'N/A';
+                statusText = `${userProfile.institution || ''} (${userProfile.course || ''}) | Phone: ${phonePrefix}...`;
+            }
+            userStatusEl.textContent = statusText;
+            
+            // --- Admin Toggles ---
+            adminPanelToggle.classList.toggle('hidden', !isOwner);
+            ownerUnlockToggle.classList.toggle('hidden', isOwner);
+
+            const mainContentSection = document.getElementById('main-content-section');
+
+            if (isOwner) {
+                mainContentSection.classList.remove('lg:col-span-2');
+                mainContentSection.classList.add('lg:col-span-1');
+            } else {
+                 mainContentSection.classList.remove('lg:col-span-1');
+                 mainContentSection.classList.add('lg:col-span-2');
+            }
+
+            // --- Enrollment Gate ---
+            if (!isEnrolled) {
+                appContainer.classList.add('hidden');
+                enrollmentModal.classList.remove('hidden');
+                loadingOverlay.classList.add('hidden');
+            } else {
+                appContainer.classList.remove('hidden');
+                enrollmentModal.classList.add('hidden');
+            }
+
+            // Ensure notes/chat input fields are disabled if not enrolled
+            const interactiveInputs = document.querySelectorAll('#note-form input, #note-form select, #resource-form input, #resource-form select, #chat-form input');
+            interactiveInputs.forEach(input => {
+                input.disabled = !isEnrolled;
+            });
+        }
+
+        // --- PUBLIC DATA LISTENERS ---
+        function startPublicListeners() {
+            // 1. Site Configuration Listener
+            onSnapshot(doc(db, CONFIG_DOC_PATH), (docSnap) => {
+                if (docSnap.exists()) {
+                    const config = docSnap.data();
+                    // Update Title
+                    const siteTitleDisplay = document.getElementById('site-title-display');
+                    const adminTitleInput = document.getElementById('admin-title');
+                    siteTitleDisplay.textContent = config.title || 'Namibia StudyLink';
+                    if (adminTitleInput) adminTitleInput.value = config.title || '';
+                    
+                    // Update Theme Color
+                    const colorValue = config.color || 'indigo';
+                    const adminColorInput = document.getElementById('admin-color');
+                    if (adminColorInput) adminColorInput.value = colorValue;
+                    document.documentElement.style.setProperty('--primary-color', getColorRGB(colorValue));
+                }
+            });
+
+            // 2. Community Chat Listener
+            onSnapshot(query(collection(db, CHAT_COLLECTION_PATH)), (snapshot) => {
+                let messages = [];
+                snapshot.forEach(doc => messages.push(doc.data()));
+
+                // Sort by timestamp descending and take the last 50
+                const latestMessages = messages.sort((a, b) => a.timestamp - b.timestamp).slice(-50);
+                
+                chatMessages.innerHTML = ''; // Clear previous messages
+                latestMessages.forEach(msg => {
+                    const isMyMessage = msg.userId === userId;
+                    const bannedIndicator = bannedUsers.includes(msg.userId) ? ' [BANNED]' : '';
+
+                    const messageHTML = `
+                        <div class="flex ${isMyMessage ? 'justify-end' : 'justify-start'}">
+                            <div class="max-w-xs md:max-w-md p-3 rounded-xl ${isMyMessage ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-800'} shadow">
+                                <span class="block text-xs font-semibold ${isMyMessage ? 'text-gray-200' : 'text-primary-600'}">
+                                    ${msg.alias || 'Student'} ${bannedIndicator}
+                                    ${isOwner ? `<button data-user-id="${msg.userId}" class="ml-2 text-xs text-red-300 hover:text-red-500 ban-user-btn">(Ban)</button>` : ''}
+                                </span>
+                                <p class="text-sm">${msg.text}</p>
+                            </div>
+                        </div>
+                    `;
+                    chatMessages.insertAdjacentHTML('beforeend', messageHTML);
+                });
+                chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to bottom
+                attachBanListeners();
+            }, (error) => console.error("Chat Listener Error:", error));
+            
+            // 3. PDF Notes Exchange Listener (Initial Load)
+            filterNotesListener();
+            
+            // 4. High School Resources Listener (NEW)
+            loadResourcesListener();
+
+        }
+        
+        // --- DATA FETCHING FUNCTIONS ---
+        async function loadBannedUsers() {
+            try {
+                const bannedSnap = await getDoc(doc(db, BANNED_DOC_PATH));
+                bannedUsers = bannedSnap.exists() ? (bannedSnap.data().uids || []) : [];
+                // Update Banned list UI only if admin panel is open, otherwise it will update when opened
+            } catch (e) {
+                console.error("Error loading banned users:", e);
+                bannedUsers = [];
+            }
+        }
+
+        function filterNotesListener() {
+            const institution = filterInstitution.value;
+            const grade = filterGrade.value;
+            let notesRef = collection(db, NOTES_COLLECTION_PATH);
+            let q = query(notesRef, orderBy("timestamp", "desc")); 
+
+            onSnapshot(q, (snapshot) => {
+                let notes = [];
+                snapshot.forEach(doc => notes.push({ id: doc.id, ...doc.data() }));
+
+                // Client-side filtering (to avoid index issues with combined filters)
+                const filteredNotes = notes.filter(note => {
+                    const instMatch = institution === 'all' || note.institution === institution;
+                    const gradeMatch = grade === 'all' || note.grade === grade;
+                    return instMatch && gradeMatch;
+                });
+
+                renderNotes(filteredNotes);
+            }, (error) => console.error("Notes Listener Error:", error));
+        }
+
+        // New function for High School Resources Listener
+        function loadResourcesListener() {
+            const resourcesRef = collection(db, RESOURCES_COLLECTION_PATH);
+            const q = query(resourcesRef, orderBy("timestamp", "desc"));
+
+            onSnapshot(q, (snapshot) => {
+                let resources = [];
+                snapshot.forEach(doc => resources.push({ id: doc.id, ...doc.data() }));
+                renderResources(resources);
+            }, (error) => console.error("Resources Listener Error:", error));
+        }
+        
+        // --- RENDERING FUNCTIONS ---
+        function renderNotes(notes) {
+            if (!isEnrolled) {
+                notesList.innerHTML = `<p class="text-center text-red-500">Please complete the registration step to view and download documents.</p>`;
+                return;
+            }
+
+            if (notes.length === 0) {
+                notesList.innerHTML = `<p class="text-center text-gray-500">No documents found for this filter combination.</p>`;
+                return;
+            }
+
+            notesList.innerHTML = notes.map(note => `
+                <div class="bg-gray-50 p-5 rounded-xl shadow-md border-l-4 border-primary-600">
+                    <div class="flex justify-between items-start mb-3">
+                        <h4 class="text-xl font-bold text-gray-900">${note.title}</h4>
+                        <span class="text-xs font-semibold text-gray-500">${note.grade} - ${note.institution}</span>
+                    </div>
+                    
+                    <!-- PDF Download Link -->
+                    <a href="${note.link}" target="_blank" class="inline-flex items-center bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow hover:bg-green-600 transition duration-300 interactive-element">
+                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Download PDF
+                    </a>
+
+                    <p class="text-xs text-gray-400 mt-3">Posted by ${note.alias} on ${new Date(note.timestamp).toLocaleDateString()}</p>
+                    ${isOwner ? `<button data-note-id="${note.id}" class="mt-2 text-sm text-red-500 hover:text-red-700 delete-note-btn">Delete Document</button>` : ''}
+                </div>
+            `).join('');
+
+            if (isOwner) {
+                attachDeleteNoteListeners();
+            }
+        }
+        
+        // New function to render High School Resources
+        function renderResources(resources) {
+             if (!isEnrolled) {
+                resourcesList.innerHTML = `<p class="text-center text-red-500">Please complete the registration step to view and contribute resources.</p>`;
+                return;
+            }
+            if (resources.length === 0) {
+                resourcesList.innerHTML = `<p class="text-center text-gray-500">No high school resources uploaded yet. Be the first!</p>`;
+                return;
+            }
+
+            resourcesList.innerHTML = resources.map(resource => {
+                const timestampStr = resource.timestamp ? new Date(resource.timestamp.toDate()).toLocaleString() : 'N/A';
+                return `
+                    <div class="bg-gray-50 p-5 rounded-xl shadow-md border-l-4 border-primary-600">
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="text-xl font-bold text-gray-900">${resource.title}</h4>
+                            <span class="text-xs font-semibold text-gray-500">G${resource.grade} - ${resource.subject}</span>
+                        </div>
+                        
+                        <a href="${resource.link}" target="_blank" class="inline-flex items-center bg-primary-600 text-white font-semibold py-2 px-4 rounded-lg shadow hover:bg-primary-700 transition duration-300 interactive-element">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            View Resource
+                        </a>
+
+                        <p class="text-xs text-gray-400 mt-3">Uploaded by ${resource.alias} on ${timestampStr}</p>
+                        ${isOwner ? `<button data-resource-id="${resource.id}" class="mt-2 text-sm text-red-500 hover:text-red-700 delete-resource-btn">Delete Resource</button>` : ''}
+                    </div>
+                `;
+            }).join('');
+            
+            if (isOwner) {
+                attachDeleteResourceListeners();
+            }
+        }
+
+        function updateBannedListUI() {
+            // Existing admin list update logic
+            const bannedUsersListEl = document.getElementById('banned-users-list');
+            if (!isOwner) return;
+            bannedUsersListEl.innerHTML = '';
+            if (bannedUsers.length === 0) {
+                bannedUsersListEl.innerHTML = '<p class="text-gray-500 text-sm">No users currently banned.</p>';
+            } else {
+                bannedUsers.forEach(uid => {
+                    bannedUsersListEl.innerHTML += `
+                        <div class="flex justify-between items-center text-sm p-1 bg-white rounded border border-gray-200">
+                            <span>UID: ${uid.substring(0, 10)}...</span>
+                            <button data-unban-id="${uid}" class="text-green-600 hover:text-green-800 unban-user-btn">Unban</button>
+                        </div>
+                    `;
+                });
+                attachUnbanListeners();
+            }
+        }
+
+        // --- EVENT HANDLERS ---
+        
+        // Tab switching logic
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const targetTab = button.dataset.tab;
+                
+                // Remove active class from all buttons and hide all content
+                tabButtons.forEach(btn => btn.classList.remove('active', 'border-primary-600', 'text-primary-600'));
+                tabButtons.forEach(btn => btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-primary-600'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+
+                // Set active class and show content
+                button.classList.add('active', 'border-primary-600', 'text-primary-600');
+                button.classList.remove('border-transparent', 'text-gray-500');
+                document.getElementById(`tab-${targetTab}`).classList.remove('hidden');
+            });
+        });
+
+        // Enrollment Form Submission (Student Registration) - Existing Logic
+        enrollmentForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const institution = document.getElementById('institution-select').value;
+            const course = document.getElementById('course-input').value.trim();
+            const phone = document.getElementById('enrollment-phone-input').value.trim();
+            const enrollmentMessageEl = document.getElementById('enrollment-message');
+
+            // --- VALIDATION: Namibian Phone Number Check (Simulated) ---
+            if (phone.length < 9 || phone.length > 10 || !NAMIBIAN_PREFIXES.some(prefix => phone.startsWith(prefix))) {
+                enrollmentMessageEl.textContent = 'Registration requires a valid Namibian mobile number (starting with 081, 085, or 083).';
+                enrollmentMessageEl.classList.remove('hidden');
+                return;
+            }
+            enrollmentMessageEl.classList.add('hidden'); // Clear message on success
+
+            const userDocPath = `/artifacts/${appId}/users/${userId}/config/profile`;
+            const userRef = doc(db, userDocPath);
+            
+            await updateDoc(userRef, { 
+                isEnrolled: true, 
+                institution: institution, 
+                course: course,
+                phone: phone 
+            });
+            isEnrolled = true;
+            
+            const userSnap = await getDoc(userRef);
+            updateUIVisibility(userSnap.data());
+            startPublicListeners();
+        });
+
+        // Owner Unlock Form Submission - Existing Logic
+        document.getElementById('owner-unlock-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const phone = document.getElementById('owner-phone-input').value.trim();
+            const ownerUnlockMessage = document.getElementById('owner-unlock-message');
+            
+            ownerUnlockMessage.classList.add('hidden');
+            
+            if (phone === OWNER_PHONE_CONCEPT) {
+                isOwner = true;
+                ownerUnlockModal.classList.add('hidden');
+                ownerUnlockModal.classList.remove('flex');
+
+                updateUIVisibility({institution: 'Owner', course: 'Admin', phone: phone}); 
+            } else {
+                ownerUnlockMessage.textContent = 'Error: Incorrect Cellphone Number.';
+                ownerUnlockMessage.classList.remove('hidden');
+            }
+        });
+
+        // PDF Notes Form Submission - Existing Logic
+        notesForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!isEnrolled) return;
+            
+            const title = document.getElementById('note-title').value;
+            const link = document.getElementById('note-link').value;
+            const institution = document.getElementById('note-institution').value;
+            const grade = document.getElementById('note-grade').value;
+
+            try {
+                const userSnap = await getDoc(doc(db, `/artifacts/${appId}/users/${userId}/config/profile`));
+                const alias = userSnap.data().alias;
+
+                await addDoc(collection(db, NOTES_COLLECTION_PATH), {
+                    title,
+                    link, 
+                    institution,
+                    grade,
+                    userId,
+                    alias,
+                    timestamp: Date.now()
+                });
+                notesForm.reset();
+            } catch (error) {
+                console.error("Error adding document link: ", error);
+            }
+        });
+        
+        // High School Resource Form Submission - NEW LOGIC
+        resourceForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!isEnrolled) return;
+            
+            const title = document.getElementById('resource-title').value;
+            const link = document.getElementById('resource-link').value;
+            const grade = document.getElementById('resource-grade-select').value;
+            const subject = document.getElementById('resource-subject-select').value;
+
+            try {
+                const userSnap = await getDoc(doc(db, `/artifacts/${appId}/users/${userId}/config/profile`));
+                const alias = userSnap.data().alias;
+
+                await addDoc(collection(db, RESOURCES_COLLECTION_PATH), {
+                    title,
+                    link, 
+                    grade: parseInt(grade),
+                    subject,
+                    userId,
+                    alias,
+                    timestamp: serverTimestamp()
+                });
+                resourceForm.reset();
+            } catch (error) {
+                console.error("Error adding resource link: ", error);
+            }
+        });
+
+        // PDF Notes Filter Change - Existing Logic
+        filterInstitution.addEventListener('change', filterNotesListener);
+        filterGrade.addEventListener('change', filterNotesListener);
+
+        // Chat Form Submission - Existing Logic
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!isEnrolled) return;
+            
+            const chatInput = document.getElementById('chat-input');
+            const text = chatInput.value.trim();
+            if (!text) return;
+
+            try {
+                const userSnap = await getDoc(doc(db, `/artifacts/${appId}/users/${userId}/config/profile`));
+                const alias = userSnap.data().alias;
+                
+                await addDoc(collection(db, CHAT_COLLECTION_PATH), {
+                    text,
+                    userId,
+                    alias,
+                    timestamp: Date.now()
+                });
+                chatInput.value = '';
+            } catch (error) {
+                console.error("Error sending chat message: ", error);
+            }
+        });
+
+        // Admin Customization Save - Existing Logic
+        document.getElementById('save-site-config')?.addEventListener('click', async () => {
+            if (!isOwner) return;
+            
+            const newTitle = document.getElementById('admin-title').value.trim();
+            const newColor = document.getElementById('admin-color').value.trim().toLowerCase();
+            
+            try {
+                await setDoc(doc(db, CONFIG_DOC_PATH), {
+                    title: newTitle,
+                    color: newColor || 'indigo'
+                }, { merge: true });
+                console.log('Site configuration saved successfully!');
+            } catch (e) {
+                console.error("Error saving config:", e);
+            }
+        });
+
+        // --- MODAL & LOGOUT Toggles ---
+        
+        document.getElementById('admin-panel-toggle')?.addEventListener('click', () => {
+            if (isOwner) {
+                document.getElementById('admin-modal').classList.remove('hidden');
+                document.getElementById('admin-modal').classList.add('flex');
+                updateBannedListUI();
+            }
+        });
+
+        document.getElementById('close-admin-modal')?.addEventListener('click', () => {
+            document.getElementById('admin-modal').classList.add('hidden');
+            document.getElementById('admin-modal').classList.remove('flex');
+        });
+        
+        document.getElementById('owner-unlock-toggle')?.addEventListener('click', () => {
+            document.getElementById('owner-unlock-modal').classList.remove('hidden');
+            document.getElementById('owner-unlock-modal').classList.add('flex');
+        });
+
+        document.getElementById('close-owner-unlock-modal')?.addEventListener('click', () => {
+            document.getElementById('owner-unlock-modal').classList.add('hidden');
+            document.getElementById('owner-unlock-modal').classList.remove('flex');
+            document.getElementById('owner-unlock-message').classList.add('hidden');
+            document.getElementById('owner-phone-input').value = '';
+        });
+
+        document.getElementById('logout-button').addEventListener('click', () => {
+            auth.signOut();
+            window.location.reload(); 
+        });
+
+        // --- OWNER MODERATION FUNCTIONS ---
+        
+        async function banUser(targetUserId) {
+            if (!isOwner || targetUserId === userId) return console.warn("Access or self-ban denied.");
+            
+            console.log(`Attempting to ban user ${targetUserId.substring(0, 8)}...`);
+            try {
+                const bannedRef = doc(db, BANNED_DOC_PATH);
+                const newBannedUsers = Array.from(new Set([...bannedUsers, targetUserId])); 
+                await setDoc(bannedRef, { uids: newBannedUsers }, { merge: true });
+                await loadBannedUsers(); 
+                console.log(`User ${targetUserId.substring(0, 8)}... has been banned.`);
+            } catch (e) {
+                console.error("Error banning user:", e);
+            }
+        }
+        
+        async function unbanUser(targetUserId) {
+            if (!isOwner) return;
+
+            console.log(`Attempting to unban user ${targetUserId.substring(0, 8)}...`);
+            try {
+                const newBannedUsers = bannedUsers.filter(uid => uid !== targetUserId);
+                const bannedRef = doc(db, BANNED_DOC_PATH);
+                await setDoc(bannedRef, { uids: newBannedUsers }, { merge: true });
+                await loadBannedUsers(); 
+                console.log(`User ${targetUserId.substring(0, 8)}... has been unbanned.`);
+                updateBannedListUI();
+            } catch (e) {
+                console.error("Error unbanning user:", e);
+            }
+        }
+        
+        async function deleteNote(noteId) {
+            if (!isOwner) return;
+
+            console.log(`Attempting to delete PDF note ${noteId}...`);
+            try {
+                await deleteDoc(doc(db, NOTES_COLLECTION_PATH, noteId));
+                console.log('PDF Document deleted successfully.');
+            } catch (e) {
+                console.error("Error deleting document:", e);
+            }
+        }
+        
+        // New function to delete High School Resource
+        async function deleteResource(resourceId) {
+            if (!isOwner) return;
+
+            console.log(`Attempting to delete Resource ${resourceId}...`);
+            try {
+                await deleteDoc(doc(db, RESOURCES_COLLECTION_PATH, resourceId));
+                console.log('Resource link deleted successfully.');
+            } catch (e) {
+                console.error("Error deleting resource:", e);
+            }
+        }
+
+        function attachBanListeners() {
+            document.querySelectorAll('.ban-user-btn').forEach(button => {
+                button.onclick = () => banUser(button.dataset.userId);
+            });
+        }
+        
+        function attachUnbanListeners() {
+            document.querySelectorAll('.unban-user-btn').forEach(button => {
+                button.onclick = () => unbanUser(button.dataset.unbanId);
+            });
+        }
+
+        function attachDeleteNoteListeners() {
+            document.querySelectorAll('.delete-note-btn').forEach(button => {
+                button.onclick = () => deleteNote(button.dataset.noteId);
+            });
+        }
+        
+        function attachDeleteResourceListeners() {
+            document.querySelectorAll('.delete-resource-btn').forEach(button => {
+                button.onclick = () => deleteResource(button.dataset.resourceId);
+            });
+        }
+
+    </script>
+
+</body>
+</html>
+
